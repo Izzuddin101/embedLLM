@@ -1,3 +1,12 @@
+# EmbedLLM (Android Only)
+Steps to run:
+1. First download the Development Build in this link
+
+2. Open your android emulator or android device. If android emulator, make sure you have one downloaded already from 
+android studio. Once downloaded, navigate to android in embedLLM, and npm run android just to open it. Ignore the errors if there are any.
+
+2. Navigate back to embedLLM and "run npx expo start", scan the QR or copy the link using the development application you previously downloaded. 
+
 # Welcome to your Expo app 👋
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
