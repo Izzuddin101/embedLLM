@@ -1,4 +1,4 @@
-# EmbedLLM (Android Only *I think idk im not sure lol)
+# EmbedLLM (Android Only)
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
@@ -25,7 +25,7 @@ to android dir.
 
 6. Press the "Test Embedding" button and have fun!
 
-Or I think if you have Expo Orbit downloaded, you can just click "Open with Orbit"
+## Or I think if you have Expo Orbit downloaded, you can just click "Open with Orbit". But make sure a device is running when doing this.
 
 # Welcome to your Expo app 👋
 
