@@ -25,6 +25,8 @@ to android dir.
 
 6. Press the "Test Embedding" button and have fun!
 
+Or I think if you have Expo Orbit downloaded, you can just click "Open with Orbit"
+
 # Welcome to your Expo app 👋
 
 In the output, you'll find options to open the app in a
