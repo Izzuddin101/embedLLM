@@ -8,6 +8,9 @@
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "assets": [
+      "./assets/dataset/parquet_embeds_rag.json"
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -34,7 +37,8 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "onnxruntime-react-native"
+      "onnxruntime-react-native",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

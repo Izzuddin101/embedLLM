@@ -3,24 +3,11 @@ import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator, ScrollVie
 import * as FileSystem from 'expo-file-system';
 import * as ort from 'onnxruntime-react-native';
 
+// Static import of the dataset
+const embeddingDataset = require('../assets/dataset/parquet_embeds_rag.json');
+
 // Define model options with optimization variants
 const MODEL_OPTIONS = [
-  { 
-    label: "Custom ONNX (eldoon101/idk-parahrase-miniLM-onnxver)",
-    repo: "eldoon101/idk-parahrase-miniLM-onnxver",
-    fileName: "paraphrase_multilingual_miniLM_L12_v2.onnx",
-    tokenPadding: 128,
-    description: "Custom implementation",
-    needsTokenTypeIds: false
-  },
-  {
-    label: "Official onnx/model.onnx",
-    repo: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    fileName: "onnx/model.onnx",
-    tokenPadding: 12,
-    description: "Standard ONNX version",
-    needsTokenTypeIds: true
-  },
   {
     label: "Optimized Level 1",
     repo: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -82,9 +69,10 @@ const ModelSelectionScreen = ({ onModelReady, onBack }) => {
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [modelLoading, setModelLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modelInfo, setModelInfo] = useState<{ size?: string, loadTime?: number, readyToUse?: boolean }>({});
+  const [modelInfo, setModelInfo] = useState<{ size?: string, loadTime?: number, readyToUse?: boolean, cached?: boolean }>({});
   const [showOptimizedModels, setShowOptimizedModels] = useState(false);
   const [showQuantizedModels, setShowQuantizedModels] = useState(false);
+  const [showAllModels, setShowAllModels] = useState(false);
   const [modelSelected, setModelSelected] = useState(false);
 
   // Effect to update model status when selection changes
@@ -227,7 +215,7 @@ const ModelSelectionScreen = ({ onModelReady, onBack }) => {
         
         // Get file info to show size
         const downloadedFileInfo = await FileSystem.getInfoAsync(modelPath);
-        modelSize = downloadedFileInfo.size || 0;
+        modelSize = downloadedFileInfo.exists ? downloadedFileInfo.size || 0 : 0;
         
         console.log(`Model downloaded successfully (${formatFileSize(modelSize)})`);
       } else {
@@ -341,81 +329,102 @@ const ModelSelectionScreen = ({ onModelReady, onBack }) => {
     </TouchableOpacity>
   );
 
+  // Render expandable section with all models
+  const renderExpandableModelSection = () => {
+    return (
+      <View style={styles.expandableSection}>
+        <TouchableOpacity 
+          style={styles.sectionToggle}
+          onPress={() => setShowAllModels(!showAllModels)}
+          disabled={modelLoading}
+        >
+          <Text style={styles.sectionToggleText}>
+            {showAllModels ? '▼ ' : '▶ '}All Models ({MODEL_OPTIONS.length})
+          </Text>
+        </TouchableOpacity>
+        
+        {showAllModels && (
+          <View style={styles.modelList}>
+            {MODEL_OPTIONS.map((option, index) => (
+              <TouchableOpacity 
+                key={index}
+                style={[
+                  styles.modelButton,
+                  selectedModelIndex === index ? styles.selectedModelButton : null
+                ]}
+                onPress={() => setSelectedModelIndex(index)}
+                disabled={modelLoading}
+              >
+                <View style={styles.modelButtonContent}>
+                  <Text 
+                    style={[
+                      styles.modelButtonText,
+                      selectedModelIndex === index ? styles.selectedModelButtonText : null
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                  {option.description && (
+                    <Text style={styles.modelDescription}>{option.description}</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Render currently selected model
+  const renderSelectedModel = () => {
+    const selectedModel = MODEL_OPTIONS[selectedModelIndex];
+    return (
+      <View style={styles.selectedModelContainer}>
+        <Text style={styles.selectedModelLabel}>Currently Selected:</Text>
+        <View style={styles.selectedModelInfo}>
+          <Text style={styles.selectedModelName}>{selectedModel.label}</Text>
+          <Text style={styles.selectedModelDesc}>{selectedModel.description}</Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Select Embedding Model</Text>
       
-      <View style={styles.modelSelector}>
-        <View style={styles.modelButtonsContainer}>
-          {/* Standard models (always visible) */}
-          {renderModelOption(MODEL_OPTIONS[0], 0)}
-          {renderModelOption(MODEL_OPTIONS[1], 1)}
-          
-          {/* Expandable optimized models section */}
+      {/* Display currently selected model */}
+      {renderSelectedModel()}
+      
+      {/* Expandable section with all models */}
+      {renderExpandableModelSection()}
+      
+      {/* Model download confirmation button */}
+      <View style={styles.downloadButtonContainer}>
+        <Button
+          title={modelLoading 
+            ? "Loading..." 
+            : modelInfo.readyToUse 
+              ? "Continue to Embedder" 
+              : modelInfo.cached 
+                ? "Load Cached Model" 
+                : "Download & Load Model"
+          }
+          onPress={modelInfo.readyToUse ? () => onModelReady() : confirmModelDownload}
+          disabled={modelLoading || !modelSelected}
+          color={modelInfo.readyToUse ? "#4CAF50" : "#007AFF"}
+        />
+        
+        {onBack && (
           <TouchableOpacity 
-            style={styles.sectionToggle}
-            onPress={() => setShowOptimizedModels(!showOptimizedModels)}
+            style={styles.backButton}
+            onPress={onBack}
             disabled={modelLoading}
           >
-            <Text style={styles.sectionToggleText}>
-              {showOptimizedModels ? '▼ ' : '▶ '}Optimized Variants ({MODEL_OPTIONS.slice(2, 6).length})
-            </Text>
+            <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          
-          {showOptimizedModels && (
-            <View style={styles.expandableSection}>
-              {MODEL_OPTIONS.slice(2, 6).map((option, i) => 
-                renderModelOption(option, i + 2)
-              )}
-            </View>
-          )}
-          
-          {/* Expandable quantized models section */}
-          <TouchableOpacity 
-            style={styles.sectionToggle}
-            onPress={() => setShowQuantizedModels(!showQuantizedModels)}
-            disabled={modelLoading}
-          >
-            <Text style={styles.sectionToggleText}>
-              {showQuantizedModels ? '▼ ' : '▶ '}Quantized Models ({MODEL_OPTIONS.slice(6).length})
-            </Text>
-          </TouchableOpacity>
-          
-          {showQuantizedModels && (
-            <View style={styles.expandableSection}>
-              {MODEL_OPTIONS.slice(6).map((option, i) => 
-                renderModelOption(option, i + 6)
-              )}
-            </View>
-          )}
-          
-          {/* Model download confirmation button */}
-          <View style={styles.downloadButtonContainer}>
-            <Button
-              title={modelLoading 
-                ? "Loading..." 
-                : modelInfo.readyToUse 
-                  ? "Continue to Embedder" 
-                  : modelInfo.cached 
-                    ? "Load Cached Model" 
-                    : "Download & Load Model"
-              }
-              onPress={modelInfo.readyToUse ? () => onModelReady() : confirmModelDownload}
-              disabled={modelLoading || !modelSelected}
-              color={modelInfo.readyToUse ? "#4CAF50" : "#007AFF"}
-            />
-            
-            {onBack && (
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={onBack}
-                disabled={modelLoading}
-              >
-                <Text style={styles.backButtonText}>← Back</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        )}
       </View>
       
       {/* Display model info when available */}
@@ -445,7 +454,7 @@ const ModelSelectionScreen = ({ onModelReady, onBack }) => {
 };
 
 // Embedding Screen component
-const EmbeddingScreen = ({ modelData, onBack }) => {
+const EmbeddingScreen = ({ modelData, onBack, onSimilaritySearch }) => {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [embedding, setEmbedding] = useState<number[] | null>(null);
@@ -527,6 +536,11 @@ const EmbeddingScreen = ({ modelData, onBack }) => {
       
       setEmbedding(Array.from(outputData));
       setLoading(false);
+
+      if (embedding) {
+        // Store the query text in modelData for reference in similarity screen
+        modelData.queryText = text;
+      }
     } catch (err) {
       console.error('Embedding generation error:', err);
       setError('Error generating embedding: ' + (err instanceof Error ? err.message : 'An unknown error occurred'));
@@ -642,10 +656,419 @@ const EmbeddingScreen = ({ modelData, onBack }) => {
           </Text>
           
           {renderEmbeddingVisualization()}
+          
+          {/* Add similarity search button */}
+          <TouchableOpacity 
+            style={styles.similarityButton}
+            onPress={() => onSimilaritySearch(embedding)}
+          >
+            <Text style={styles.buttonText}>Find Similar Items</Text>
+          </TouchableOpacity>
         </View>
       )}
     </ScrollView>
   );
+};
+
+// Similarity Screen component
+const SimilarityScreen = ({ embedding, modelData, onBack, onNewEmbedding }) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dataset, setDataset] = useState<Array<{text: string, embedding: number[], similarity?: number}>>([]);
+  const [similarItems, setSimilarItems] = useState<Array<{text: string, similarity: number}>>([]);
+  const [datasetSource, setDatasetSource] = useState<'real' | 'sample'>('sample');
+  
+  useEffect(() => {
+    loadDataset();
+  }, []);
+
+  const loadDataset = async () => {
+    try {
+      setLoading(true);
+      
+      // Use the statically imported dataset
+      console.log('Using statically imported dataset');
+      
+      // Direct access to the imported JSON data
+      const datasetItems = embeddingDataset;
+      
+      console.log('Successfully loaded real dataset');
+      setDatasetSource('real');
+
+      // Cache the dataset for future use if needed
+      try {
+        const assetsDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+        const datasetPath = `${assetsDir}parquet_embeds_rag.json`;
+
+        await FileSystem.makeDirectoryAsync(
+          datasetPath.substring(0, datasetPath.lastIndexOf('/')),
+          { intermediates: true }
+        ).catch(() => {});
+
+        await FileSystem.writeAsStringAsync(datasetPath, JSON.stringify(datasetItems));
+        console.log('Cached real dataset for future use');
+      } catch (writeError) {
+        console.warn('Could not cache dataset:', writeError);
+      }
+
+      // Use loaded dataset
+      setDataset(datasetItems);
+      setSimilarItems(findSimilarItems(embedding, datasetItems));
+      console.log(`FINAL DATASET SOURCE: ${datasetSource.toUpperCase()}`);
+      console.log(`Dataset has ${datasetItems.length} items`);
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Error in loadDataset:', err);
+      setError('Failed to load dataset: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      
+      // Fallback to sample dataset on error
+      try {
+        const sampleData = createSampleDataset();
+        setDataset(sampleData);
+        setSimilarItems(findSimilarItems(embedding, sampleData));
+        setDatasetSource('sample');
+        console.log('Falling back to sample dataset');
+      } catch (fallbackErr) {
+        console.error('Error creating fallback dataset:', fallbackErr);
+      }
+      
+      setLoading(false);
+    }
+  };
+  
+  // Function to find similar items using cosine similarity
+  const findSimilarItems = (queryEmbedding, datasetItems) => {
+    try {
+      console.log(`Finding similar items among ${datasetItems.length} entries`);
+      console.log('First dataset item:', JSON.stringify(datasetItems[0]).substring(0, 100) + '...');
+      
+      // Handle different possible dataset formats
+      let processedItems = [];
+      
+      // Process each item and extract text and embedding
+      for (let i = 0; i < datasetItems.length; i++) {
+        const item = datasetItems[i];
+        
+        // Skip null or undefined items
+        if (!item) continue;
+        
+        // Check if item has the expected format with text and embedding
+        if (item.text && Array.isArray(item.embedding) && item.embedding.length > 0) {
+          processedItems.push(item);
+          continue;
+        }
+        
+        // Try alternative field names
+        const text = item.text || item.content || item.document || item.text_content || JSON.stringify(item);
+        let embedding = null;
+        
+        // Look for embedding array with various field names
+        if (Array.isArray(item.embedding)) {
+          embedding = item.embedding;
+        } else if (Array.isArray(item.vector)) {
+          embedding = item.vector;
+        } else if (Array.isArray(item.embedding_vector)) {
+          embedding = item.embedding_vector;
+        }
+        
+        // Only add if we found a valid embedding
+        if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+          processedItems.push({ text, embedding });
+        }
+      }
+      
+      console.log(`Found ${processedItems.length} valid items with text and embeddings`);
+      
+      if (processedItems.length === 0) {
+        console.warn('No valid items found in dataset, using sample dataset');
+        return [];
+      }
+      
+      // Calculate cosine similarity for each item
+      const itemsWithSimilarity = [];
+      for (const item of processedItems) {
+        try {
+          const similarity = calculateCosineSimilarity(queryEmbedding, item.embedding);
+          if (!isNaN(similarity)) {
+            itemsWithSimilarity.push({
+              text: item.text,
+              similarity: similarity
+            });
+          }
+        } catch (itemError) {
+          console.error('Error processing item for similarity:', itemError);
+        }
+      }
+      
+      console.log(`Calculated similarity for ${itemsWithSimilarity.length} items`);
+      
+      // Sort by similarity (highest first) and take top 5
+      return itemsWithSimilarity
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5);
+    } catch (error) {
+      console.error('Error finding similar items:', error);
+      return [];
+    }
+  };
+  
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={onBack}
+          disabled={loading}
+        >
+          <Text style={styles.backButtonText}>← Back to Embedding</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Similarity Search</Text>
+      </View>
+      
+      <View style={styles.modelInfoCard}>
+        <Text style={styles.infoLabel}>Search using: {modelData.modelInfo.name}</Text>
+        <Text>Finding top 5 similar entries from {dataset.length} items</Text>
+        
+        {/* Dataset source indicator */}
+        <View style={[
+          styles.datasetIndicator, 
+          datasetSource === 'real' ? styles.realDatasetIndicator : styles.sampleDatasetIndicator
+        ]}>
+          <Text style={styles.datasetIndicatorText}>
+            {datasetSource === 'real' ? 'Using real dataset' : 'Using sample dataset'}
+          </Text>
+        </View>
+      </View>
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0000ff" />
+          <Text>Finding similar items...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : (
+        <>
+          <View style={styles.queryContainer}>
+            <Text style={styles.sectionTitle}>Your Query:</Text>
+            <Text style={styles.queryText}>{modelData.queryText}</Text>
+            
+            <TouchableOpacity
+              style={styles.newQueryButton}
+              onPress={onNewEmbedding}
+            >
+              <Text style={styles.buttonText}>Create New Embedding</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.resultsContainer}>
+            <Text style={styles.sectionTitle}>Top Similar Items:</Text>
+            {similarItems.length > 0 ? (
+              similarItems.map((item, index) => (
+                <View key={index} style={styles.similarItemContainer}>
+                  <View style={styles.similarityBadge}>
+                    <Text style={styles.similarityScore}>
+                      {(item.similarity * 100).toFixed(1)}%
+                    </Text>
+                  </View>
+                  <Text style={styles.similarItemText}>{item.text}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noResultsText}>No similar items found</Text>
+            )}
+          </View>
+        </>
+      )}
+    </ScrollView>
+  );
+};
+
+// Helper function for cosine similarity calculation with better error handling
+const calculateCosineSimilarity = (vectorA, vectorB) => {
+  // More robust validation
+  if (!vectorA || !vectorB) {
+    console.error('Null or undefined vectors provided for similarity calculation');
+    return 0;
+  }
+  
+  if (!Array.isArray(vectorA) || !Array.isArray(vectorB)) {
+    console.error(`Invalid vector types: vectorA (${typeof vectorA}), vectorB (${typeof vectorB})`);
+    return 0;
+  }
+  
+  if (vectorA.length === 0 || vectorB.length === 0) {
+    console.error('Empty vectors provided for similarity calculation');
+    return 0;
+  }
+  
+  if (vectorA.length !== vectorB.length) {
+    console.error(`Vector length mismatch: ${vectorA.length} vs ${vectorB.length}`);
+    return 0;
+  }
+  
+  try {
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < vectorA.length; i++) {
+      // Make sure we're working with valid numbers by explicitly parsing
+      // Using Number() instead of parseFloat to handle numeric arrays better
+      const a = Number(vectorA[i]);
+      const b = Number(vectorB[i]);
+      
+      // Skip NaN values to prevent calculation errors
+      if (isNaN(a) || isNaN(b)) continue;
+      
+      dotProduct += a * b;
+      normA += a * a;
+      normB += b * b;
+    }
+    
+    normA = Math.sqrt(normA);
+    normB = Math.sqrt(normB);
+    
+    if (normA === 0 || normB === 0) {
+      return 0;
+    }
+    
+    return dotProduct / (normA * normB);
+  } catch (error) {
+    console.error('Error in cosine similarity calculation:', error);
+    return 0;
+  }
+};
+
+// Function to find similar items using cosine similarity
+const findSimilarItems = (queryEmbedding, datasetItems) => {
+  try {
+    console.log(`Finding similar items among ${datasetItems.length} entries`);
+    console.log('First dataset item:', JSON.stringify(datasetItems[0]).substring(0, 100) + '...');
+    
+    // Handle different possible dataset formats
+    let processedItems = [];
+    
+    // Process each item and extract text and embedding
+    for (let i = 0; i < datasetItems.length; i++) {
+      const item = datasetItems[i];
+      
+      // Skip null or undefined items
+      if (!item) continue;
+      
+      // Check if item has the expected format with text and embedding
+      if (item.text && Array.isArray(item.embedding) && item.embedding.length > 0) {
+        processedItems.push(item);
+        continue;
+      }
+      
+      // Try alternative field names
+      const text = item.text || item.content || item.document || item.text_content || JSON.stringify(item);
+      let embedding = null;
+      
+      // Look for embedding array with various field names
+      if (Array.isArray(item.embedding)) {
+        embedding = item.embedding;
+      } else if (Array.isArray(item.vector)) {
+        embedding = item.vector;
+      } else if (Array.isArray(item.embedding_vector)) {
+        embedding = item.embedding_vector;
+      }
+      
+      // Only add if we found a valid embedding
+      if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+        processedItems.push({ text, embedding });
+      }
+    }
+    
+    console.log(`Found ${processedItems.length} valid items with text and embeddings`);
+    
+    if (processedItems.length === 0) {
+      console.warn('No valid items found in dataset, using sample dataset');
+      return [];
+    }
+    
+    // Calculate cosine similarity for each item
+    const itemsWithSimilarity = [];
+    for (const item of processedItems) {
+      try {
+        const similarity = calculateCosineSimilarity(queryEmbedding, item.embedding);
+        if (!isNaN(similarity)) {
+          itemsWithSimilarity.push({
+            text: item.text,
+            similarity: similarity
+          });
+        }
+      } catch (itemError) {
+        console.error('Error processing item for similarity:', itemError);
+      }
+    }
+    
+    console.log(`Calculated similarity for ${itemsWithSimilarity.length} items`);
+    
+    // Sort by similarity (highest first) and take top 5
+    return itemsWithSimilarity
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+  } catch (error) {
+    console.error('Error finding similar items:', error);
+    return [];
+  }
+};
+
+// Fallback to sample dataset if loading fails
+const fallbackToSampleDataset = () => {
+  console.log('Using fallback sample dataset');
+  return createSampleDataset();
+};
+
+// Create a sample dataset with text and embeddings for demo purposes
+const createSampleDataset = () => {
+  return [
+    {
+      text: "Machine learning is a field of inquiry devoted to understanding and building methods that 'learn'.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Natural language processing is a subfield of linguistics, computer science, and artificial intelligence.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Deep learning is part of a broader family of machine learning methods based on artificial neural networks.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Computer vision is an interdisciplinary field that deals with how computers can gain high-level understanding from digital images or videos.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Reinforcement learning is an area of machine learning concerned with how intelligent agents ought to take actions in an environment.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Data science is an interdisciplinary field that uses scientific methods to extract knowledge from data.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Neural networks are computing systems vaguely inspired by the biological neural networks that constitute animal brains.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "Transformer models have revolutionized natural language processing tasks.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "BERT is a transformer-based machine learning technique for natural language processing pre-training.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    },
+    {
+      text: "GPT (Generative Pre-trained Transformer) is an autoregressive language model that uses deep learning.",
+      embedding: Array(384).fill(0).map(() => (Math.random() * 2 - 1) * 0.1)
+    }
+  ];
 };
 
 // Helper functions
@@ -784,10 +1207,98 @@ const createTokenizer = (tokenizerConfig: any, tokenizerData: any, maxPadding: n
   };
 };
 
+// Function to prepare dataset file for the emulator
+const prepareDatasetFile = async () => {
+  try {
+    console.log('Preparing dataset file for emulator...');
+    
+    // Define paths
+    const assetsDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+    const targetPath = `${assetsDir}parquet_embeds_rag.json`;
+    
+    // Check if file already exists
+    const fileInfo = await FileSystem.getInfoAsync(targetPath);
+    if (fileInfo.exists) {
+      console.log('Dataset file already exists in document directory');
+      return;
+    }
+    
+    // Try to find and copy the dataset file from different possible locations
+    const possibleSourcePaths = [
+      // Relative path from the application bundle
+      '../../assets/dataset/parquet_embeds_rag.json',
+      // Absolute path for development
+      'c:/Users/cs123/Desktop/Pandai - Internship Work/Testing files/expo-dev/embedLLM/assets/dataset/parquet_embeds_rag.json'
+    ];
+    
+    let datasetContent = null;
+    
+    // Try to load from require first (works best in Expo)
+    try {
+      const rawData = require('../../assets/dataset/parquet_embeds_rag.json');
+      datasetContent = JSON.stringify(rawData);
+      console.log('Successfully loaded dataset from require()');
+    } catch (reqError) {
+      console.log('Could not load dataset using require():', reqError);
+      
+      // Try reading from filesystem as fallback
+      for (const sourcePath of possibleSourcePaths) {
+        try {
+          console.log('Trying to read from:', sourcePath);
+          // This approach may not work directly in React Native
+          // For development/debugging purposes only
+          if (sourcePath.startsWith('c:/')) {
+            // Skip absolute paths in production
+            continue;
+          }
+          
+          const fileData = await FileSystem.readAsStringAsync(sourcePath);
+          datasetContent = fileData;
+          console.log('Successfully read dataset from:', sourcePath);
+          break;
+        } catch (readError) {
+          console.log(`Failed to read from ${sourcePath}:`, readError);
+        }
+      }
+    }
+    
+    // If we couldn't get the data, create a sample dataset
+    if (!datasetContent) {
+      console.log('Could not find dataset file, creating sample dataset');
+      const sampleData = fallbackToSampleDataset();
+      datasetContent = JSON.stringify(sampleData);
+    }
+    
+    // Create directory if needed
+    const targetDir = targetPath.substring(0, targetPath.lastIndexOf('/'));
+    await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true }).catch(e => {
+      console.log('Directory creation:', e);
+    });
+    
+    // Write the dataset file
+    await FileSystem.writeAsStringAsync(targetPath, datasetContent);
+    console.log('Dataset file prepared successfully at:', targetPath);
+  } catch (error) {
+    console.error('Error preparing dataset file:', error);
+  }
+};
+
 // Main component with screen navigation
 export const NativeTextEmbedder = () => {
   const [currentScreen, setCurrentScreen] = useState('modelSelection');
   const [modelData, setModelData] = useState(null);
+  const [currentEmbedding, setCurrentEmbedding] = useState(null);
+  const [datasetReady, setDatasetReady] = useState(false);
+  
+  // Initialize dataset when component mounts
+  useEffect(() => {
+    const initializeData = async () => {
+      await prepareDatasetFile();
+      setDatasetReady(true);
+    };
+    
+    initializeData();
+  }, []);
   
   const handleModelReady = (data) => {
     setModelData(data);
@@ -798,16 +1309,33 @@ export const NativeTextEmbedder = () => {
     setCurrentScreen('modelSelection');
   };
   
+  const goToEmbedding = () => {
+    setCurrentScreen('embedding');
+  };
+  
+  const goToSimilaritySearch = (embedding) => {
+    setCurrentEmbedding(embedding);
+    setCurrentScreen('similarity');
+  };
+  
   return (
     <View style={styles.mainContainer}>
       {currentScreen === 'modelSelection' ? (
         <ModelSelectionScreen 
           onModelReady={handleModelReady}
         />
-      ) : (
+      ) : currentScreen === 'embedding' ? (
         <EmbeddingScreen 
           modelData={modelData}
           onBack={goToModelSelection}
+          onSimilaritySearch={goToSimilaritySearch}
+        />
+      ) : (
+        <SimilarityScreen 
+          embedding={currentEmbedding}
+          modelData={modelData}
+          onBack={goToEmbedding}
+          onNewEmbedding={goToEmbedding}
         />
       )}
     </View>
@@ -1020,5 +1548,135 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#f5f5f5',
     borderRadius: 5,
-  }
+  },
+  similarityButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 5,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  newQueryButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 5,
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  queryContainer: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#e6f2ff',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  queryText: {
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  resultsContainer: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 5,
+  },
+  similarItemContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    backgroundColor: 'white',
+    borderRadius: 5,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+    alignItems: 'center',
+  },
+  similarityBadge: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 15,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 10,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  similarityScore: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  similarItemText: {
+    flex: 1,
+    fontSize: 14,
+  },
+  noResultsText: {
+    marginTop: 20,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    color: '#666',
+  },
+  selectedModelContainer: {
+    marginBottom: 15,
+    padding: 12,
+    backgroundColor: '#e6f2ff',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  selectedModelLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: '#555',
+  },
+  selectedModelInfo: {
+    paddingLeft: 5,
+  },
+  selectedModelName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    marginBottom: 2,
+  },
+  selectedModelDesc: {
+    fontSize: 14,
+    color: '#666',
+  },
+  modelList: {
+    marginTop: 10,
+    marginLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#ccc',
+    paddingLeft: 10,
+  },
+  datasetIndicator: {
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  realDatasetIndicator: {
+    backgroundColor: '#4CAF50',
+  },
+  sampleDatasetIndicator: {
+    backgroundColor: '#FFA000',
+  },
+  datasetIndicatorText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
 });
