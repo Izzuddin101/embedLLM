@@ -9,19 +9,11 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 2. Download the development expo build from this link [Expo Dev Build](https://expo.dev/accounts/eldoon101/projects/embedLLM/builds/6a67b9b8-e12f-4b44-85fd-76400638060d).
-This will download an APK file.
-If you do not have an android device, make sure to have Android Studio downloaded to get access to android emulators. Afterwards, navigate
-to android dir.
-   ```bash
-   npm run android
-   ```
-   This will automatically open any android emulator that you have installed. (Ignore any errors that come out)
-
-4. From project dir,
+3. From project dir,
    ```bash
    npx expo start
    ```
-   You should see QR code and under that a metro waiting on X. If you are using android emulator copy the link, otherwise scan the QR using the development build. 
+   Now just press A to open on Android. It should automatically open your emulator or if you have an android device connected and emulator should give you an option. 
 
 6. Press the "Test Embedding" button and have fun!
 
